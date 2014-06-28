@@ -18,9 +18,9 @@ def tree_data(request):
     for name in os.listdir(rootNode):
         fullpath = os.path.join(rootNode, name)
         relativePath = os.path.join(request.POST.get('node'), name)
-        if os.path.isfile(fullpath):
+        if os.path.isfile(fullpath) and not fullpath.endswith('.pyc'):
             response += [{'id': relativePath, 'text': name, 'url': relativePath, 'leaf': 'true', 'cls': 'file'}]
-        else:
+        elif os.path.isdir(fullpath):
             response += [{'id': relativePath, 'text': name, 'url': relativePath, 'cls': 'folder'}]
     return HttpResponse(json.dumps(response), content_type='application/json')
 
@@ -31,21 +31,24 @@ def model_editor(request):
     modPath = __import__(app_name).__path__[0]
     projectRoot = modPath.rstrip(app_name)
     response=[]
-    
+    meta_dir = os.path.join(IDE_PATH, 'metafiles/')
+    if not os.path.exists(meta_dir):
+        os.mkdir(meta_dir)
+
     if(request.POST.get('cmd') == 'getMeta'):
-        return HttpResponse(open(os.path.join(IDE_PATH,'metafiles/.%s' % urllib.unquote_plus(request.POST.get('app_name'))),'a+').read(), content_type='application/json')
+        return HttpResponse(open(os.path.join(meta_dir, '.%s' % urllib.unquote_plus(request.POST.get('app_name'))),'a+').read(), content_type='application/json')
     elif(request.POST.get('cmd') == 'setMeta'):
-        setMetaFile(request.POST.get('app_name'),request.POST.get('meta').decode('string_escape')) 
+        setMetaFile(request.POST.get('app_name'),request.POST.get('meta').decode('string_escape'))
         return HttpResponse("")
     elif(request.POST.get('cmd') == 'getData'):
-        arrData = {} 
+        arrData = {}
         try:
             if(request.POST.get('meta')!=None):
-                metaDataServer = open(os.path.join(IDE_PATH,'metafiles/.%s' % urllib.unquote_plus(request.POST.get('app_name'))),'a+').read() 
+                metaDataServer = open(os.path.join(IDE_PATH,'metafiles/.%s' % urllib.unquote_plus(request.POST.get('app_name'))),'a+').read()
                 metaArrayServer = json.loads(metaDataServer).get('versions')
                 metaArrayClient = json.loads(request.POST.get('meta').decode('string_escape')).get('versions')
                 for (id,value) in metaArrayServer.iteritems():
-                    if(id not in metaArrayClient or value > metaArrayClient[id]): 
+                    if(id not in metaArrayClient or value > metaArrayClient[id]):
                         fileContent = getDataFile(id, projectRoot)
                         arrData[id] = fileContent
             else:
@@ -56,7 +59,7 @@ def model_editor(request):
             pass
         return HttpResponse(json.dumps(arrData), content_type='application/json')
     elif(request.POST.get('cmd') == 'setMetaAndData'):
-        setMetaFile(request.POST.get('app_name'),request.POST.get('meta').decode('string_escape')) 
+        setMetaFile(request.POST.get('app_name'),request.POST.get('meta').decode('string_escape'))
         dataPost = request.POST.get('data')
         dataArray = json.loads(dataPost, strict=False)
         for (fileName,fileContent) in dataArray.iteritems():
@@ -66,7 +69,7 @@ def model_editor(request):
         dataPost = request.POST.get('data').decode('string_escape')
         setDataFile(request.POST.get('path'), dataPost, projectRoot)
         return HttpResponse("")
-    elif(request.POST.get('cmd') == 'find'):        
+    elif(request.POST.get('cmd') == 'find'):
         keywords = request.POST.get('keywords');
         if(keywords and len(keywords)>0):
             import whooshlib
@@ -75,7 +78,7 @@ def model_editor(request):
             arrResults = []
             for hit in whooshlib.find(index_path_file, keywords):
                 arrResults.append([hit.highlights("content"), hit["path"]])
-            return HttpResponse(json.dumps(arrResults) if len(arrResults)>0 else json.dumps([['No results found','']]))      
+            return HttpResponse(json.dumps(arrResults) if len(arrResults)>0 else json.dumps([['No results found','']]))
     else:
         return HttpResponse("")
 
@@ -93,7 +96,7 @@ def edit(request):
 def setMetaFile(app_name, metaData):
     IDE_PATH = os.path.dirname(os.path.abspath(__file__))
     metaDataFile = os.path.join(IDE_PATH,'metafiles/.%s' % urllib.unquote_plus(app_name))
-    try: 
+    try:
         handle = open(metaDataFile, 'w')
         handle.write(metaData)
     except IOError as (errno, strerror):
@@ -110,9 +113,9 @@ def setDataFile(id, fileContent, rootPath):
     except IOError:
         return HttpResponse('File exception (%s)'%urllib.unquote_plus(id))
 
-    
+
 def getDataFile(id, rootPath):
-    try: 
+    try:
         return open(os.path.join(rootPath, urllib.unquote_plus(id))).read()
     except IOError:
         return HttpResponse('File exception (%s)'%id)
